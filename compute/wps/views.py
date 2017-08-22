@@ -14,8 +14,10 @@ from django.shortcuts import get_list_or_404
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods
 from django.views.static import serve
+from django.http import QueryDict
 from cwt.wps_lib import metadata
 
+from pprint import pprint
 from wps import forms
 from wps import models
 from wps import node_manager
@@ -186,6 +188,10 @@ def login_mpc(request):
 @ensure_csrf_cookie
 def wps(request):
     manager = node_manager.NodeManager()
+    
+    pprint(request)
+    
+    pprint(QueryDict('request=Execute&service=WPS&identifier=CDAT.subset&datainputs=[domain=[{"name":"d0","time":{"start":0,"end":10,"system":"indices"}}];variable=[{"uri":"collection:/giss_r1i1p1","name":"tas:v1","domain":"d0"}];operation=[{"name":"python.numpyModule.avew","input":"v1","domain":"d0","axes":"xy"}]]&api_key=CZh4rxb8AvdpuLstw8WNnKpJxagLbWltAdfwfZ0djbBDbOVaiaULjb10qeC1MFzA'))
 
     try:
         api_key, op, identifier, data_inputs = manager.handle_request(request)

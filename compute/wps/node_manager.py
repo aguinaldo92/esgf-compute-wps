@@ -13,6 +13,8 @@ import string
 import tempfile
 import time
 from contextlib import closing
+from pprint import pprint
+import urllib
 
 import cwt
 import django
@@ -27,9 +29,14 @@ from wps import models
 from wps import settings
 from wps import tasks
 from wps import wps_xml
+from simple import parse_input
 from wps.auth import oauth2
 from wps.auth import openid
 from wps.processes import get_process
+
+from PyOphidia import client
+
+from ophidia import ophidia_wps_parser
 
 logger = logging.getLogger('wps.node_manager')
 
@@ -157,13 +164,25 @@ class NodeManager(object):
 
         # Case insesitive
         temp = dict((x.lower(), y) for x, y in params.iteritems())
-
+        
         if name.lower() not in temp:
             logger.info('Missing required parameter %s', name)
 
             raise NodeManagerWPSError(wps_lib.MissingParameterValue, name)
 
         return temp[name.lower()]
+        
+        
+    def get_datainputs_from_request(self,complete_request):
+        """ Gets a parameter from a django QueryDict """
+        path = complete_request.get_full_path()
+        for i in path.split('&'):
+            if i[:10] == 'datainputs':
+                match = re.search('\[(.*)\]', i)
+                url = match.group(0)
+                print(match.group(0))
+                url_decoded =  urllib.unquote(url).decode('utf8')
+                return url_decoded
 
     def get_status(self, job_id):
         """ Get job status. """
@@ -215,7 +234,7 @@ class NodeManager(object):
         try:
             process = models.Process.objects.get(identifier=identifier)
         except models.Process.DoesNotExist:
-            raise Exception('Process "{}" does not exist.'.format(ientifier))
+            raise Exception('Process "{}" does not exist.'.format(identifier))
 
         return process.description
 
@@ -227,16 +246,69 @@ class NodeManager(object):
         op_by_id = lambda x: [y for y in o if y.identifier == x][0]
 
         op = op_by_id(identifier)
+        
+        print("op: {}".format(op))
 
         logger.info('Job {} Preparing process inputs'.format(job.id))
 
         operations = dict((x.name, x.parameterize()) for x in o)
+        
+        print("operations: {}".format(operations))
 
         domains = dict((x.name, x.parameterize()) for x in d)
+        
+        print("domains: {}".format(domains))
 
         variables = dict((x.name, x.parameterize()) for x in v)
+        
+        print("variables: {}".format(variables))
 
         process = get_process(identifier)
+        
+        print("process: {}".format(process))
+
+        params = {
+                'cwd': '/tmp',
+                'job_id': job.id,
+                'user_id': user.id,
+                }
+
+        logger.info('Job {} Building celery workflow'.format(job.id))
+
+        chain = tasks.print_hello.s("START!!")
+        
+        chain = (chain | tasks.check_auth.si(**params))
+        
+        chain = (chain | tasks.print_hello.si("HELLLO!!"))
+
+        chain = (chain | process.si(variables, operations, domains, **params))
+
+        chain = (chain | tasks.handle_output.s(**params))
+
+        logger.info('Job {} Executing celery workflow'.format(job.id))
+
+        chain()
+        
+    def execute_simple(self, user, job, identifier, data_inputs):
+        logger.info('Job {} Executing SIMPLE WPS process "{}"'.format(job.id, identifier))
+
+        v = parse_input.parse_input(data_inputs)
+
+        logger.info('Job {} Preparing process inputs'.format(job.id))
+        
+        print('v=')
+        
+        print(v)
+
+        variables = dict((x.name, x.value) for x in v)
+        
+        print('variables=')
+        
+        pprint(variables)
+        
+        process = get_process(identifier)
+        
+        print(process)
 
         params = {
                 'cwd': '/tmp',
@@ -248,7 +320,7 @@ class NodeManager(object):
 
         chain = tasks.check_auth.s(**params)
 
-        chain = (chain | process.si(variables, operations, domains, **params))
+        chain = (chain | process(variables,**params))
 
         chain = (chain | tasks.handle_output.s(**params))
 
@@ -276,13 +348,43 @@ class NodeManager(object):
             logger.debug('Job {} Request {}'.format(job.id, request_cmd))
 
             request.send(str(request_cmd))
+            
+    def execute_ophidia(self, user, job, identifier, data_inputs):
+        logger.info('Job {} Executing Ophidia process "{}"'.format(job.id, identifier))
+        
+        params = {
+                'cwd': '/tmp',
+                'job_id': job.id,
+                'user_id': user.id,
+                }
+                
+        oph_user = 'oph-test'
+        
+        oph_passwd = "abcd"
+        
+        ophclient = client.Client(oph_user,oph_passwd,"127.0.0.1","11732")
+        
+        kwargs = ophidia_wps_parser.parse_inputs(data_inputs) # kwargs is a dictionary and includes operation[], variable[] and domain[] 
+        
+        workflow_names = ophidia_wps_parser.parse_workflow_names(kwargs) # list of names of workflow to call
+        
+        workflow_uris = ophidia_wps_parser.parse_uri(kwargs)
+        
+        
+        ophclient.wsubmit("/usr/local/ophidia/workflows/max.json")
+        
+        #string_submitted = ophidia_wps_parser.parse_workflow_parameters(domains,variables,operations)
+        
+
 
     def execute(self, user, identifier, data_inputs):
         """ WPS execute operation """
         try:
             process = models.Process.objects.get(identifier=identifier)
         except models.Process.DoesNotExist:
-            raise Exception('Process "{}" does not exist.'.format(ientifier))
+            raise Exception('Process "{}" does not exist.'.format(identifier))
+            
+        print("data_inputs {}".format(data_inputs))
 
         server = models.Server.objects.get(host='default')
 
@@ -296,8 +398,12 @@ class NodeManager(object):
 
         if process.backend == 'local':
             self.execute_local(user, job, identifier, data_inputs)
+        elif process.backend == 'simple':
+            self.execute_simple(user, job, identifier, data_inputs)
         elif process.backend == 'CDAS2':
             self.execute_cdas2(job, identifier, data_inputs)
+        elif process.backend == 'ophidia':
+            self.execute_ophidia(user, job, identifier, data_inputs)
         else:
             job.failed()
 
@@ -305,7 +411,7 @@ class NodeManager(object):
 
         return job.report
 
-    def handle_get(self, params):
+    def handle_get(self, complete_request, params):
         """ Handle an HTTP GET request. """
         request = self.get_parameter(params, 'request')
 
@@ -324,11 +430,13 @@ class NodeManager(object):
         elif operation == 'execute':
             identifier = self.get_parameter(params, 'identifier')
 
-            data_inputs = self.get_parameter(params, 'datainputs')
+            data_inputs = self.get_datainputs_from_request(complete_request)
+            
+            #print("data_inputs handle get{}".format(data_inputs)) 
 
         return api_key, operation, identifier, data_inputs
 
-    def handle_post(self, data, params):
+    def handle_post(self, rquest, data, params):
         """ Handle an HTTP POST request. 
 
         NOTE: we only support execute requests as POST for the moment
@@ -355,6 +463,7 @@ class NodeManager(object):
     def handle_request(self, request):
         """ Convert HTTP request to intermediate format. """
         if request.method == 'GET':
-            return self.handle_get(request.GET)
+            #print(request.get_full_path())
+            return self.handle_get(request,request.GET)
         elif request.method == 'POST':
-            return self.handle_post(request.body, request.GET)
+            return self.handle_post(request, request.body, request.GET)

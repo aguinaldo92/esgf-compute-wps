@@ -25,6 +25,8 @@ __all__ = ['avg']
 @register_process('CDAT.subset')
 @cwt_shared_task()
 def subset(self, variables, operations, domains, **kwargs):
+    print("CDAT SUBSET TEST")
+    logger.debug('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! logger')
     status = self.initialize(credentials=True, **kwargs)
 
     status.job.started()
@@ -38,6 +40,8 @@ def subset(self, variables, operations, domains, **kwargs):
     var_name = input_var.var_name
 
     grid, tool, method = self.generate_grid(op, v, d)
+    
+    print("CDAT SUBSET TEST")
 
     out_local_path = self.generate_local_output()
 

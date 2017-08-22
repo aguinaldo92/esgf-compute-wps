@@ -22,9 +22,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SECRET_KEY = '+a#&@l4!^)i5cn=!*ye^!42xcmyqs3l&j368ow^-y=3fs-txq6'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 # Application definition
 
@@ -164,7 +164,7 @@ LOGGING = {
     'loggers': {
         'cwt': {
             'handlers': ['cwt_rotating'],
-            'propagate': False,
+            'propagate': True,
             'level': 'DEBUG',
         },
         'wps': {

@@ -284,13 +284,17 @@ class CWTBaseTask(celery.Task):
         """ Format the file path for a local output. """
         if name is None:
             name = '{}.nc'.format(uuid.uuid4())
-
+            
+        print("file name = {} name da id = {}.nc".format(name, uuid.uuid4()))
+        print("local_output path: {}".format(settings.OUTPUT_LOCAL_PATH))
+        
         path = os.path.join(settings.OUTPUT_LOCAL_PATH, name)
 
         return path
 
     def generate_output(self, local_path, **kwargs):
         """ Format the file path for a remote output. """
+        print("remote_output path: {}".format(settings.OUTPUT_LOCAL_PATH))
         if kwargs.get('local') is None:
             out_name = local_path.split('/')[-1]
 
@@ -840,5 +844,6 @@ def handle_output(self, variable, **kwargs):
         job = models.Job.objects.get(pk=job_id)
     except models.Job.DoesNotExist:
         raise Exception('Job does not exist {}'.format(job_id))
-
+    
+    print("launch job.succeeded function")
     job.succeeded(json.dumps(variable))

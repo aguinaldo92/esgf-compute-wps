@@ -248,6 +248,8 @@ def describe(server_id, identifiers):
 
 @shared_task(bind=True, base=CWTBaseTask)
 def check_auth(self, **kwargs):
+    
+    print("Start checking auth")
     self.initialize(**kwargs)
 
     user_id = kwargs.get('user_id')
@@ -292,3 +294,10 @@ def check_auth(self, **kwargs):
     user.auth.cert = ''.join([cert, key])
 
     user.auth.save()
+
+@shared_task
+def print_hello(stringa_da_stampare):
+    
+    logger.info("stringa da stampare: {}".format(stringa_da_stampare))
+    print("stringa da stampare: {}".format(stringa_da_stampare))
+    

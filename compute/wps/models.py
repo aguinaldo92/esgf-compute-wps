@@ -104,9 +104,13 @@ class Job(models.Model):
 
     def succeeded(self, output=None):
         status = self.status_set.create(status=wps_lib.ProcessSucceeded())
+        
+        print("status {}".format(status))
+        print("output {}".format(output))
 
         if output is not None:
             status.output = wps_xml.create_output(output)
+            print("saving stuats")
 
             status.save()
 
