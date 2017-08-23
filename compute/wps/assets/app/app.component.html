@@ -1,0 +1,24 @@
+<div>
+  <nav class="navbar navbar-default">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="wps/home">WPS</a>
+      <ul *ngIf="logged" class="nav navbar-nav navbar-left">
+        <li><a routerLink="/wps/home/jobs">Jobs</a></li>
+      </ul>
+      <ul class="nav navbar-nav navbar-right">
+        <li *ngIf="!logged; else elseBlock"><a routerLink="/wps/home/login">Login</a></li>
+        <ng-template #elseBlock>
+          <li><a routerLink="/wps/home/profile">Profile</a></li>
+          <li><a routerLink="/wps/home/logout">Logout</a></li>
+        </ng-template>
+      </ul>
+    </div>
+  </nav>
+</div>
+<div>
+  <div class="alert alert-dismissible" [class.alert-danger]="error" [class.show]="error" [class.hidden]="!error" role="alert">
+    <button type="button" class="close" (click)="onHideError()"><span aria-hidden="true">&times;</span></button>
+    {{errorMessage}}
+  </div>
+  <router-outlet></router-outlet>
+</div>
