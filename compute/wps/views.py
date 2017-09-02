@@ -560,15 +560,6 @@ def login_mpc(request):
 @require_http_methods(['GET', 'POST'])
 @ensure_csrf_cookie
 def wps(request):
-<<<<<<< HEAD
-    manager = node_manager.NodeManager()
-    
-    pprint(request)
-    
-    pprint(QueryDict('request=Execute&service=WPS&identifier=CDAT.subset&datainputs=[domain=[{"name":"d0","time":{"start":0,"end":10,"system":"indices"}}];variable=[{"uri":"collection:/giss_r1i1p1","name":"tas:v1","domain":"d0"}];operation=[{"name":"python.numpyModule.avew","input":"v1","domain":"d0","axes":"xy"}]]&api_key=CZh4rxb8AvdpuLstw8WNnKpJxagLbWltAdfwfZ0djbBDbOVaiaULjb10qeC1MFzA'))
-
-=======
->>>>>>> upstream/master
     try:
         manager = node_manager.NodeManager()
 

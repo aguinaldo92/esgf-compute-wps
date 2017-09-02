@@ -916,15 +916,6 @@ if global_settings.DEBUG:
 
         v, d, o = self.load(variables, domains, operations)
 
-
-    try:
-        job = models.Job.objects.get(pk=job_id)
-    except models.Job.DoesNotExist:
-        raise Exception('Job does not exist {}'.format(job_id))
-    
-    print("launch job.succeeded function")
-    job.succeeded(json.dumps(variable))
-
         self.track_files(v)
 
         logger.info('Operations {}'.format(operations))

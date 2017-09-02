@@ -25,15 +25,7 @@ __all__ = ['avg']
 @register_process('CDAT.subset')
 @cwt_shared_task()
 def subset(self, variables, operations, domains, **kwargs):
-<<<<<<< HEAD
-    print("CDAT SUBSET TEST")
-    logger.debug('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! logger')
-    status = self.initialize(credentials=True, **kwargs)
-
-    status.job.started()
-=======
     job, status = self.initialize(credentials=True, **kwargs)
->>>>>>> 50185f1a73218d7847494ca7d51792264475d128
 
     v, d, o = self.load(variables, domains, operations)
 
