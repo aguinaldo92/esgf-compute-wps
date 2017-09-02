@@ -9,10 +9,12 @@ import django
 import requests
 from django import http
 from django.contrib.auth import authenticate
-from django.contrib.auth import login as dlogin
+from django.contrib.auth import login
 from django.contrib.auth import logout
 from django.core import serializers
+from django.core.mail import send_mail
 from django.db import IntegrityError
+from django.db.models import Max
 from django.shortcuts import render
 from django.shortcuts import redirect
 from django.shortcuts import get_list_or_404
@@ -56,16 +58,32 @@ TIME_FMT = {
 SESSION_TIME_FMT = '%Y%m%d%H%M%S'
 CDAT_TIME_FMT = '{0.year:04d}-{0.month:02d}-{0.day:02d} {0.hour:02d}:{0.minute:02d}:{0.second:02d}.0'
 
+def success(data=None):
+    response = {
+        'status': 'success',
+        'data': data
+    }
+
+    return http.JsonResponse(response)
+
+def failed(error=None):
+    response = {
+        'status': 'failed',
+        'error': error
+    }
+
+    return http.JsonResponse(response)
+
 @require_http_methods(['GET'])
 @ensure_csrf_cookie
 def search_esgf(request):
     try:
         if not request.user.is_authenticated:
-            raise Exception('User is not logged in')
+            raise Exception('Must be logged in to search ESGF')
 
-        dataset_ids = request.GET.get('dataset_id', None)
+        dataset_ids = request.GET['dataset_id']
 
-        index_node = request.GET.get('index_node', None)
+        index_node = request.GET['index_node']
 
         shard = request.GET.get('shard', None)
 
@@ -148,17 +166,19 @@ def search_esgf(request):
                     'time_units': TIME_FREQ.get(time_freq, None),
                     'variables': list(set(variables))
                    }
-
-        return http.JsonResponse({'status': 'success', 'data': data})
+    except KeyError as e:
+        return failed({'message': 'Mising required parameter "{}"'.format(e.message)})
     except Exception as e:
-        return http.JsonResponse({'status': 'failure', 'errors': e.message})
+        return failed(e.message)
+    else:
+        return success(data)
 
 @require_http_methods(['POST'])
 @ensure_csrf_cookie
 def execute(request):
     try:
-        if not request.user.is_authenticated():
-            raise Exception('User not logged in');
+        if not request.user.is_authenticated:
+            raise Exception('Must be logged in to execute a job');
 
         process = request.POST['process']
 
@@ -173,7 +193,7 @@ def execute(request):
         longitudes = request.POST.get('longitudes', None)
 
         # Javascript stringify on an array creates list without brackets
-        dimensions = json.loads('[{}]'.format(request.POST['dimensions']))
+        dimensions = json.loads('[{}]'.format(request.POST.get('dimensions', '')))
 
         files = files.split(',')
 
@@ -191,9 +211,7 @@ def execute(request):
 
         domain = cwt.Domain(dims)
 
-        proc = cwt.Process(None)
-
-        proc.identifier = process
+        proc = cwt.Process(identifier=process)
 
         kwargs = {}
 
@@ -210,17 +228,19 @@ def execute(request):
         manager = node_manager.NodeManager()
 
         result = manager.execute(request.user, process, datainputs)
-
-        return http.JsonResponse({'status': 'success', 'report': result})
     except Exception as e:
-        return http.JsonResponse({'status': 'failed', 'errors': e.message})
+        logger.exception('Execute failed')
+
+        return failed(e.message)
+    else:
+        return success({'report': result})
 
 @require_http_methods(['POST'])
 @ensure_csrf_cookie
 def generate(request):
     try:
         if not request.user.is_authenticated():
-            raise Exception('User not logged in');
+            raise Exception('Must be logged in to generate a script');
 
         process = request.POST['process']
 
@@ -235,7 +255,7 @@ def generate(request):
         longitudes = request.POST.get('longitudes', None)
 
         # Javascript stringify on an array creates list without brackets
-        dimensions = json.loads('[{}]'.format(request.POST['dimensions']))
+        dimensions = json.loads('[{}]'.format(request.POST.get('dimensions', '')))
 
         files = files.split(',')
 
@@ -304,10 +324,10 @@ def generate(request):
         response = http.HttpResponse(buf.getvalue(), content_type='text/x-script.phyton')
 
         response['Content-Disposition'] = 'attachment; filename="{}.py"'.format(kernel)
-
-        return response
     except Exception as e:
-        return http.JsonResponse({'status': 'failed', 'errors': e.message})
+        return failed(e.message)
+    else:
+        return response
 
 @require_http_methods(['GET'])
 @ensure_csrf_cookie
@@ -334,125 +354,132 @@ def oauth2_callback(request):
 @require_http_methods(['POST'])
 @ensure_csrf_cookie
 def create(request):
-    form = forms.CreateForm(request.POST)
-
-    if not form.is_valid():
-        logger.info('Form is not valid')
-
-        return http.JsonResponse({ 'status': 'failure', 'errors': form.errors })
-
-    username = form.cleaned_data['username']
-
-    email = form.cleaned_data['email']
-
-    openid = form.cleaned_data['openid']
-
-    password = form.cleaned_data['password']
-
-    logger.info('Creating new account for {}'.format(username))
-
     try:
-        user = models.User.objects.create_user(username, email, password)
-    except IntegrityError:
-        return http.JsonResponse({'status': 'failure', 'errors': 'User already exists'})
+        form = forms.CreateForm(request.POST)
 
-    user.save()
+        if not form.is_valid():
+            raise Exception(form.errors)
 
-    user.auth = models.Auth(openid_url=openid)
+        username = form.cleaned_data['username']
 
-    user.auth.save()
-
-    return http.JsonResponse({ 'status': 'success' })
-
-@require_http_methods(['GET'])
-@ensure_csrf_cookie
-def user(request):
-    if not request.user.is_authenticated:
-        return http.JsonResponse({'status': 'failed', 'errors': 'User not logged in.'})
-
-    data = {
-            'id': request.user.id,
-            'username': request.user.username,
-            'email': request.user.email,
-           }
-
-    if request.user.auth is not None:
-        if request.user.auth.openid == '':
-            oid = openid.OpenID.retrieve_and_parse(request.user.auth.openid_url)
-
-            request.user.auth.openid = oid.response
-
-            request.user.auth.save()
-
-        data['openid'] = request.user.auth.openid_url
-        data['type'] = request.user.auth.type
-        data['api_key'] = request.user.auth.api_key
-
-    return http.JsonResponse(data)
-
-@require_http_methods(['POST'])
-@ensure_csrf_cookie
-def update(request):
-    if not request.user.is_authenticated():
-        return http.JsonResponse({'status': 'failed', 'errors': 'User not logged in.'})
-
-    form = forms.UpdateForm(request.POST)
-
-    if form.is_valid():
         email = form.cleaned_data['email']
 
         openid = form.cleaned_data['openid']
 
         password = form.cleaned_data['password']
 
-        modified = False
+        try:
+            user = models.User.objects.create_user(username, email, password)
+        except IntegrityError:
+            raise Exception('User already exists')
+
+        models.Auth.objects.create(openid_url=openid, user=user)
+
+        try:
+            send_mail(settings.CREATE_SUBJECT,
+                      settings.CREATE_MESSAGE,
+                      settings.ADMIN_EMAIL.format(login_url=settings.LOGIN_URL, admin_email=settings.ADMIN_EMAIL),
+                      [user.email],
+                      html_message=True)
+        except Exception:
+            pass
+    except Exception as e:
+        logger.exception('Error creating account')
+
+        return failed(e.message)
+    else:
+        return success('Successfully created account for "{}"'.format(username))
+
+def user_to_json(user):
+    data = {
+        'username': user.username,
+        'email': user.email,
+        'openid': user.auth.openid_url,
+        'type': user.auth.type,
+        'api_key': user.auth.api_key,
+        'admin': user.is_superuser
+    }
+
+    return data
+
+@require_http_methods(['GET'])
+@ensure_csrf_cookie
+def user_details(request):
+    try:
+        if not request.user.is_authenticated:
+            raise Exception('Must be logged in to retieve user details')
+
+        #oid = openid.OpenID.retrieve_and_parse(request.user.auth.openid_url)
+
+        #request.user.auth.openid = oid.response
+
+        #request.user.auth.save()
+    except Exception as e:
+        return failed(e.message)
+    else:
+        return success(user_to_json(request.user))
+
+@require_http_methods(['POST'])
+@ensure_csrf_cookie
+def update(request):
+    try:
+        if not request.user.is_authenticated():
+            raise Exception('Must be logged in to update account')
+
+        form = forms.UpdateForm(request.POST)
+
+        if not form.is_valid():
+            raise Exception(form.errors)
+
+        email = form.cleaned_data['email']
+
+        openid = form.cleaned_data['openid']
+
+        password = form.cleaned_data['password']
 
         if email != u'':
             request.user.email = email
 
-            modified = True
+            request.user.save()
 
         if openid != u'':
-            request.user.auth.openid = openid
+            request.user.auth.openid_url = openid
 
-            modified = True
+            request.user.auth.save()
 
         if password != u'':
             request.user.set_password(password)
 
-            modified = True
-
-        if modified:
-            logger.info('User modified');
-
-            request.user.auth.save()
-
             request.user.save()
+    except Exception as e:
+        return failed(e.message)
     else:
-        logger.error('Update form is invalid')
-
-        return http.JsonResponse({ 'status': 'failure', 'errors': form.errors })
-
-    return http.JsonResponse({'status': 'success'})
+        return success(user_to_json(request.user))
 
 @require_http_methods(['GET'])
 @ensure_csrf_cookie
-def regenerate_api_key(request, user_id):
-    if not request.user.is_authenticated():
-        return http.JsonResponse({'status': 'failed', 'errors': 'User not logged in.'})
+def regenerate(request):
+    try:
+        if not request.user.is_authenticated():
+            raise Exception('Must be logged in to regenerate api key')
 
-    manager = node_manager.NodeManager()
+        manager = node_manager.NodeManager()
 
-    api_key = manager.regenerate_api_key(user_id)
-
-    return http.JsonResponse({'api_key': api_key})
+        api_key = manager.regenerate_api_key(request.user.pk)
+    except Exception as e:
+        return failed(e.message)
+    else:
+        return success({'api_key': api_key})
 
 @require_http_methods(['POST'])
 @ensure_csrf_cookie
-def login(request):
-    form = forms.LoginForm(request.POST)
+def user_login(request):
+    try:
+        form = forms.LoginForm(request.POST)
 
-    if form.is_valid():
+        if not form.is_valid():
+            raise Exception(form.errors)
+
         username = form.cleaned_data['username']
 
         password = form.cleaned_data['password']
@@ -464,101 +491,87 @@ def login(request):
         if user is not None:
             logger.info('Authenticate user {}, logging in'.format(username))
 
-            dlogin(request, user)
-
-            return http.JsonResponse({ 'status': 'success', 'expires': request.session.get_expiry_date() })
+            login(request, user)
         else:
-            logger.warning('Failed to authenticate user')
-
-            return http.JsonResponse({ 'status': 'failure', 'errors': 'Authentication failed.' })
+            raise Exception('Failed to authenticate user')
+    except Exception as e:
+        return failed(e.message)
     else:
-        logger.info('Login form is invalid')
-
-        return http.JsonResponse({ 'status': 'failure', 'errors': form.errors })
+        return success({'expires': request.session.get_expiry_date()})
 
 @require_http_methods(['GET'])
 @ensure_csrf_cookie
-def logout_view(request):
-    if request.user.is_authenticated():
+def user_logout(request):
+    try:
+        if not request.user.is_authenticated:
+            raise Exception('Must be logged in')
+
         logger.info('Logging user {} out'.format(request.user.username))
 
         logout(request)
-
-        return http.JsonResponse({'status': 'success'})
-
-    return http.JsonResponse({'status': 'failed', 'errors': 'User not authenticated'})
+    except Exception as e:
+        return failed(e.message)
+    else:
+        return success('Logged out')
 
 @require_http_methods(['POST'])
 @ensure_csrf_cookie
 def login_oauth2(request):
-    if request.user.is_authenticated():
-        form = forms.OpenIDForm(request.POST)
+    try:
+        if not request.user.is_authenticated:
+            raise Exception('Must be logged in to authenticate using ESGF OAuth2')
 
-        if form.is_valid():
-            oid_url = form.cleaned_data.get('openid')
+        logger.info('Authenticating OAuth2 for {}'.format(request.user.auth.openid_url))
 
-            logger.info('Authenticating OAuth2 for {}'.format(oid_url))
+        manager = node_manager.NodeManager()
 
-            manager = node_manager.NodeManager()
-
-            redirect_url, session = manager.auth_oauth2(oid_url)
-
-            #request.session.update(session)
-
-            return http.JsonResponse({'status': 'success', 'redirect': redirect_url})
-        else:
-            logger.warning('OAuth2 login form is invalid')
-
-            errors = form.errors
+        redirect_url, session = manager.auth_oauth2(request.user.auth.openid_url)
+    except Exception as e:
+        return failed(e.message)
     else:
-        logger.warning('User is not authenticated')
-
-        errors = 'User not authenticated'
-
-    return http.JsonResponse({'status': 'failed', 'errors': errors})
+        return success({'redirect': redirect_url})
 
 @require_http_methods(['POST'])
 @ensure_csrf_cookie
 def login_mpc(request):
-    if request.user.is_authenticated():
+    try:
+        if not request.user.is_authenticated:
+            raise Exception('Must be logged in to authenticate using ESGF MyProxyClient')
+
         form = forms.MPCForm(request.POST)
 
-        if form.is_valid():
-            username = form.cleaned_data.get('username')
+        if not form.is_valid():
+            raise Exception(form.errors)
 
-            password = form.cleaned_data.get('password')
+        username = form.cleaned_data['username']
 
-            logger.info('Authenticating MyProxyClient for {}'.format(username))
+        password = form.cleaned_data['password']
 
-            manager = node_manager.NodeManager()
+        logger.info('Authenticating MyProxyClient for {}'.format(username))
 
-            try:
-                api_key = manager.auth_mpc(request.user.auth.openid_url, username, password)
-            except Exception as e:
-                return http.JsonResponse({'status': 'failed', 'errors': e.message})
+        manager = node_manager.NodeManager()
 
-            return http.JsonResponse({'status': 'success'})
-        else:
-            logger.warning('MyProxyClient login form is invalid')
-
-            errors = form.errors
+        manager.auth_mpc(request.user.auth.openid_url, username, password)
+    except Exception as e:
+        return failed(e.message)
     else:
-        logger.warning('User is not authenticated')
-
-        errors = 'User not authenticated'
-
-    return http.JsonResponse({'status': 'failed', 'errors': errors})
+        return success('Successfully logged into ESGF using MyProxyClient')
 
 @require_http_methods(['GET', 'POST'])
 @ensure_csrf_cookie
 def wps(request):
+<<<<<<< HEAD
     manager = node_manager.NodeManager()
     
     pprint(request)
     
     pprint(QueryDict('request=Execute&service=WPS&identifier=CDAT.subset&datainputs=[domain=[{"name":"d0","time":{"start":0,"end":10,"system":"indices"}}];variable=[{"uri":"collection:/giss_r1i1p1","name":"tas:v1","domain":"d0"}];operation=[{"name":"python.numpyModule.avew","input":"v1","domain":"d0","axes":"xy"}]]&api_key=CZh4rxb8AvdpuLstw8WNnKpJxagLbWltAdfwfZ0djbBDbOVaiaULjb10qeC1MFzA'))
 
+=======
+>>>>>>> upstream/master
     try:
+        manager = node_manager.NodeManager()
+
         api_key, op, identifier, data_inputs = manager.handle_request(request)
 
         logger.info('Handling WPS request {} for api key {}'.format(op, api_key))
@@ -610,20 +623,38 @@ def wps(request):
 @require_http_methods(['GET'])
 @ensure_csrf_cookie
 def regen_capabilities(request):
-    manager = node_manager.NodeManager()
+    try:
+        if not request.user.is_authenticated:
+            raise Exception('Must be logged in to regenerate capabilities')
 
-    manager.generate_capabilities()
+        if not request.user.is_superuser:
+            raise Exception('Must be an admin to regenerate capabilities')
 
-    return http.HttpResponse('Regenerated capabilities')
+        manager = node_manager.NodeManager()
+
+        manager.generate_capabilities()
+    except Exception as e:
+        return failed(e.message)
+    else:
+        return success('Regenerated capabilities')
 
 @require_http_methods(['GET'])
 @ensure_csrf_cookie
 def cdas2_capabilities(request):
-    manager = node_manager.NodeManager()
+    try:
+        if not request.user.is_authenticated:
+            raise Exception('Must be logged in to regenerate capabilities')
 
-    manager.cdas2_capabilities()
+        if not request.user.is_superuser:
+            raise Exception('Must be an admin to regenerate capabilities')
 
-    return http.HttpResponse('CDAS capabilities')
+        manager = node_manager.NodeManager()
+
+        manager.cdas2_capabilities()
+    except Exception as e:
+        return failed(e.message)
+    else:
+        return success('Regenerated EDAS capabilities')
 
 @require_http_methods(['GET'])
 @ensure_csrf_cookie
@@ -639,7 +670,7 @@ def status(request, job_id):
 def job(request, job_id):
     try:
         if not request.user.is_authenticated:
-            raise Exception('User not logged in')
+            raise Exception('Must be logged in to view job details')
 
         update = request.GET.get('update', False)
 
@@ -679,29 +710,78 @@ def job(request, job_id):
             ]
 
         request.session['updated'] = datetime.datetime.now().strftime(SESSION_TIME_FMT)
-
-        return http.JsonResponse(dict(data=status))
     except Exception as e:
-        return http.JsonResponse({'status': 'failed', 'errors': e.message})
+        return failed(e.message)
+    else:
+        return success(status)
 
 @require_http_methods(['GET'])
 @ensure_csrf_cookie
 def jobs(request):
     try:
         if not request.user.is_authenticated:
-            raise Exception('User not logged in')
+            raise Exception('Must be logged in to view job history')
+
+        jobs_count = models.Job.objects.filter(user_id=request.user.id).count()
+
+        index = int(request.GET.get('index', 0))
+
+        limit = int(request.GET.get('limit', jobs_count))
+
+        jobs_qs = models.Job.objects.filter(user_id=request.user.id, pk__gt=index)
+        
+        jobs_qs = jobs_qs.annotate(accepted=Max('status__created_date'))
+
+        jobs_qs = jobs_qs.order_by('accepted')
+
+        if limit is not None:
+            jobs_qs = jobs_qs[index: limit-1]
 
         jobs = list(reversed([
             {
                 'id': x.id,
                 'elapsed': x.elapsed,
                 'accepted': x.status_set.all().values('created_date').order_by('created_date').first()
-            } for x in models.Job.objects.filter(user_id=request.user.id)
+            } for x in jobs_qs
         ]))
-
-        return http.JsonResponse(dict(data=jobs))
     except Exception as e:
-        return http.JsonResponse({'status': 'failed', 'errors': e.message})
+        logger.exception('')
+        return failed(e.message)
+    else:
+        return success({'count': jobs_count, 'jobs': jobs})
+
+@require_http_methods(['GET'])
+@ensure_csrf_cookie
+def job_remove_all(request):
+    try:
+        if not request.user.is_authenticated:
+            raise Exception('Must be logged in to remove jobs')
+
+        request.user.job_set.all().delete()
+    except Exception as e:
+        return failed(e.message)
+    else:
+        return success('Removed all jobs')
+
+@require_http_methods(['GET'])
+@ensure_csrf_cookie
+def job_remove(request, job_id):
+    try:
+        if not request.user.is_authenticated:
+            raise Exception('Must be logged in to remove a job')
+
+        job = models.Job.objects.get(pk=job_id)
+
+        if job.user != request.user:
+            raise Exception('Must be the owner of the job to remove')
+
+        job.delete()
+    except models.Job.DoesNotExist:
+        return failed('Job does not exists')
+    except Exception as e:
+        return failed(e.message)
+    else:
+        return success({'job': job_id})
 
 @ensure_csrf_cookie
 def output(request, file_name):
@@ -710,3 +790,4 @@ def output(request, file_name):
 @ensure_csrf_cookie
 def home(request):
     return render(request, 'wps/index.html')
+

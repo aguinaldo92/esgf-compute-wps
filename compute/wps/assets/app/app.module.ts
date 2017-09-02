@@ -5,9 +5,10 @@ import { HttpModule } from '@angular/http';
 import { RouterModule } from '@angular/router';
 
 import { AppComponent } from './app.component';
-import { CreateUserFormComponent } from './create-user-form.component';
-import { UpdateUserFormComponent } from './update-user-form.component';
-import { LoginFormComponent } from './login-form.component';
+import { HomeComponent } from './home.component';
+import { CreateUserComponent } from './create-user.component';
+import { UpdateUserComponent } from './update-user.component';
+import { LoginComponent } from './login.component';
 import { LogoutComponent } from './logout.component';
 import { ConfigureComponent } from './configure.component';
 import { DimensionComponent } from './dimension.component';
@@ -27,12 +28,16 @@ import { NotificationService } from './notification.service';
         path: 'wps/home',
         children: [
           {
+            path: '',
+            component: HomeComponent
+          },
+          {
             path: 'create',
-            component: CreateUserFormComponent
+            component: CreateUserComponent
           },
           {
             path: 'login',
-            component: LoginFormComponent
+            component: LoginComponent
           }
         ]
       },
@@ -46,7 +51,7 @@ import { NotificationService } from './notification.service';
           },
           {
             path: 'profile',
-            component: UpdateUserFormComponent
+            component: UpdateUserComponent
           },
           {
             path: 'logout',
@@ -62,9 +67,10 @@ import { NotificationService } from './notification.service';
   ],
   declarations: [
     AppComponent,
-    CreateUserFormComponent,
-    UpdateUserFormComponent,
-    LoginFormComponent,
+    HomeComponent,
+    CreateUserComponent,
+    UpdateUserComponent,
+    LoginComponent,
     LogoutComponent,
     ConfigureComponent,
     DimensionComponent,

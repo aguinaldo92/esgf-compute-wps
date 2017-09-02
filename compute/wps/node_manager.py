@@ -384,8 +384,6 @@ class NodeManager(object):
             process = models.Process.objects.get(identifier=identifier)
         except models.Process.DoesNotExist:
             raise Exception('Process "{}" does not exist.'.format(identifier))
-            
-        print("data_inputs {}".format(data_inputs))
 
         server = models.Server.objects.get(host='default')
 

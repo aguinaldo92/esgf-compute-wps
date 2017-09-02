@@ -1,14 +1,12 @@
 import { Injectable } from '@angular/core';
-import { Http } from '@angular/http';
+import { Http, URLSearchParams } from '@angular/http';
 
 import { NotificationService } from './notification.service';
 
 export interface WPSResponse {
   status: string;
-  errors: string;
-  api_key: string;
-  expires: string;
-  redirect: string;
+  error: string;
+  data: any;
 }
 
 export class Job {
@@ -102,11 +100,39 @@ export class WPSService {
       .catch(this.handleError);
   }
 
-  jobs(): Promise<Job[]> {
-    return this.http.get('/wps/jobs')
+  removeAll(): Promise<number> {
+    return this.http.get('/wps/jobs/remove')
       .toPromise()
-      .then(response => response.json().data.map((x: any) => new Job(x.id, x.elapsed, x.accepted)))
-      .catch(this.handleError);
+      .then(response => response.json())
+      .catch(error => this.handleError(error));
+  }
+
+  remove(jobID: number): Promise<number> {
+    return this.http.get(`/wps/jobs/${jobID}/remove`)
+      .toPromise()
+      .then(response => response.json())
+      .catch(error => this.handleError(error));
+  }
+
+  jobs(index: number, limit: number): Promise<any> {
+    let params = new URLSearchParams();
+
+    params.append('index', ''+index);
+    //params.append('limit', ''+limit);
+
+    return this.http.get('/wps/jobs', {
+      params: params 
+    })
+      .toPromise()
+      .then(response => {
+        let res = response.json();
+
+        return {
+          count: res.data.count,
+          jobs: res.data.jobs.map((x: any) => new Job(x.id, x.elapsed, x.accepted))
+        };
+      })
+      .catch(error => this.handleError(error));
   }
   
   private handleError(error: any): Promise<any> {

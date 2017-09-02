@@ -49,8 +49,6 @@ def subset(self, variables, operations, domains, **kwargs):
 
     out_local_path = self.generate_local_output()
 
-    status.update('Beginning retrieval of subset data')
-
     with closing(cdms2.open(out_local_path, 'w')) as out:
         logger.info('Writing to output {}'.format(out_local_path))
 
@@ -60,7 +58,7 @@ def subset(self, variables, operations, domains, **kwargs):
 
             out.write(data, id=var_name)
 
-        self.cache_input(input_var, op.domain, read_callback)
+        self.cache_input(input_var, op.domain, status, read_callback)
 
     out_path = self.generate_output(out_local_path, **kwargs)
 
@@ -83,28 +81,16 @@ def aggregate(self, variables, operations, domains, **kwargs):
 
     grid, tool, method = self.generate_grid(op, v, d)
 
-    try:
-        with nested(*[cdms2.open(x.uri) for x in op.inputs]) as inputs:
-            time_axes = [x[var_name].getTime() for x in inputs]
-    except cdms2.CDMSError:
-        raise Exception('Failed to gather time axes')
-
-    base_time = sorted(time_axes, key=lambda x: x.units)[0]
-
-    status.update('Beginning retrieval of aggregated data')
-
     with closing(cdms2.open(out_local_path, 'w')) as out:
         logger.info('Writing to output {}'.format(out_local_path))
 
         def read_callback(data):
-            data.getTime().toRelativeTime(base_time.units)
-
             if grid is not None:
                 data = data.regrid(grid, regridTool=tool, regridMethod=method)
 
             out.write(data, id=var_name)
 
-        self.cache_multiple_input(op.inputs, op.domain, read_callback)
+        self.cache_multiple_input(op.inputs, op.domain, status, read_callback)
 
     out_path = self.generate_output(out_local_path, **kwargs)
 
