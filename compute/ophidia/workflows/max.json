@@ -1,0 +1,28 @@
+{
+        "name": "MAX1",
+        "author": "Andrea",
+        "abstract": "Simple workflow ",
+        "exec_mode": "sync",
+        "ncores": "1",
+        "tasks":
+        [
+                {
+                        "name": "ImportNC",
+                        "operator": "oph_importnc3",
+                        "arguments": [ "measure=$1"  , "src_path=$2" , "cwd=/" ]
+                },
+                {
+                        "name": "ExtractMax",
+                        "operator": "oph_reduce",
+                        "arguments": [ "operation=max" ],
+                         "dependencies": [  { "task": "ImportNC", "type": "single" } ]
+                },
+                {
+                        "name": "ExportNC2",
+                        "operator": "oph_exportnc2",
+                        "arguments": [ "output_path=$3" , "cwd=/" , "output_name=$4"],
+                        "dependencies": [  { "task": "ExtractMax", "type": "single" } ]
+                }
+                
+        ]
+}

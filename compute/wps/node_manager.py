@@ -12,9 +12,11 @@ import re
 import string
 import tempfile
 import time
+import uuid
+import urllib
 from contextlib import closing
 from pprint import pprint
-import urllib
+
 
 import cwt
 import django
@@ -180,7 +182,6 @@ class NodeManager(object):
             if i[:10] == 'datainputs':
                 match = re.search('\[(.*)\]', i)
                 url = match.group(0)
-                print(match.group(0))
                 url_decoded =  urllib.unquote(url).decode('utf8')
                 return url_decoded
 
@@ -318,7 +319,7 @@ class NodeManager(object):
 
         chain = tasks.check_auth.s(**params)
 
-        chain = (chain | process(variables,**params))
+        chain = (chain | process.si(variables,**params))
 
         chain = (chain | tasks.handle_output.s(**params))
 
@@ -355,21 +356,23 @@ class NodeManager(object):
                 'job_id': job.id,
                 'user_id': user.id,
                 }
-                
-        oph_user = 'oph-test'
         
-        oph_passwd = "abcd"
-        
-        ophclient = client.Client(oph_user,oph_passwd,"127.0.0.1","11732")
+        ophclient = client.Client(settings.OPH_USER,settings.OPH_PASSWD,settings.OPH_HOSTNAME,settings.OPH_PORT)
         
         kwargs = ophidia_wps_parser.parse_inputs(data_inputs) # kwargs is a dictionary and includes operation[], variable[] and domain[] 
         
         workflow_names = ophidia_wps_parser.parse_workflow_names(kwargs) # list of names of workflow to call
         
-        workflow_uris = ophidia_wps_parser.parse_uri(kwargs)
+        workflow_import_uri = ophidia_wps_parser.parse_uri(kwargs)
+        
+        file_name = uuid.uuid4()
         
         
-        ophclient.wsubmit("/usr/local/ophidia/workflows/max.json")
+        for w in workflow_names:
+            print(w)            
+            params = ['tas', 'http://127.0.0.1:8080/thredds/dodsC/testOphidia/tas.nc' , settings.OPH_EXPORT_PATH , file_name]
+            lastResponse = ophclient.wsubmit(w , *params)
+        
         
         #string_submitted = ophidia_wps_parser.parse_workflow_parameters(domains,variables,operations)
         

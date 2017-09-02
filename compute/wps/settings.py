@@ -1,10 +1,15 @@
 #! /usr/bin/env python
 
+import os
+
 from functools import partial
 
 from django.conf import settings
 
+from os.path import normpath
+
 setting = partial(getattr, settings)
+
 
 # General Settings
 OAUTH2_CALLBACK = setting('WPS_OAUTH2_CALLBACK', 'https://aims2.llnl.gov/auth/callback')
@@ -32,3 +37,16 @@ LANG = setting('WPS_LANG', 'en-US')
 TITLE = setting('WPS_TITLE', 'LLNL WPS')
 NAME = setting('WPS_NAME', 'Lawerence Livermore National Laboratory')
 SITE = setting('WPS_SITE', 'https://llnl.gov')
+
+# ophidia settings
+OPH_USER = setting('user' , 'oph-test')
+OPH_PASSWD = setting('passwd' , 'abcd')
+OPH_HOSTNAME = setting('hostname' , '127.0.0.1')
+OPH_PORT = setting('port','11732')
+
+this_dir = os.path.dirname(__file__)
+workflows_dir_relpath = os.path.join(this_dir, '../ophidia/workflows/')
+workflows_dir = os.path.normpath(workflows_dir_relpath)
+workflows_dir += '/'
+OPH_WORKFLOWS_PATH = setting('oph_workflows_path' , workflows_dir)
+OPH_EXPORT_PATH = setting('oph_export_path' , '/usr/local/ophidia/apache-tomcat-6.0.45/content/thredds/public/ophidia_test_data/')

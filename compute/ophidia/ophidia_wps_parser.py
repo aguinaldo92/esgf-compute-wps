@@ -5,6 +5,7 @@ import json
 import re
 import sys
 from pprint import pprint
+from wps import settings
 
 
 
@@ -20,11 +21,29 @@ def parse_inputs(data_inputs):
 
 
 def parse_workflow_names(kwargs): 
-    workflow_names = [ x.get("name") for x in kwargs.get('operation', [])]
-    
+    """ estrae una lista di nomi di identifier e li strasforma in una lista di workflows"""
+    workflow_names = [ x.get("name").split('.')[1] for x in kwargs.get('operation', [])]
+    pprint(workflow_names)
+    workflows_names = [ "".join(x) for x in workflow_names]
     pprint(workflow_names)
     
-    return workflow_names
+    workflows = []
+    for w in workflows_names:
+        #~ print("w = {} {}".format(w,type(w)))
+        w = w.encode('ascii','ignore') 
+        w += ".json"
+        print(settings.OPH_WORKFLOWS_PATH)
+        w = settings.OPH_WORKFLOWS_PATH + w
+        workflows.append(w)
+        #~ print("w = {} {}".format(w,type(w)))
+    
+    #~ print(workflows)
+    #~ print(len(workflows))
+    
+    #~ for w in workflows:
+        #~ print("w_aggiunti = {} {}".format(w,type(w)))
+    
+    return workflows
     
 def parse_uri(kwargs):
     nc_uri = [x.get("uri") for x in kwargs.get('variable', []) if x.get("uri")[-3:] == ".nc"]
@@ -32,6 +51,7 @@ def parse_uri(kwargs):
     pprint(nc_uri)
     
     return nc_uri
+
 
 
 def parse_workflow_parameters(self, data_inputs): 
