@@ -31,14 +31,11 @@ from wps import models
 from wps import settings
 from wps import tasks
 from wps import wps_xml
-from simple import parse_input
 from wps.auth import oauth2
 from wps.auth import openid
 from wps.processes import get_process
 
-from PyOphidia import client
-
-from ophidia import ophidia_wps_parser
+from wps import ophidia_wps
 
 logger = logging.getLogger('wps.node_manager')
 
@@ -248,67 +245,16 @@ class NodeManager(object):
 
         op = op_by_id(identifier)
         
-        print("op: {}".format(op))
-
         logger.info('Job {} Preparing process inputs'.format(job.id))
 
         operations = dict((x.name, x.parameterize()) for x in o)
         
-        print("operations: {}".format(operations))
-
         domains = dict((x.name, x.parameterize()) for x in d)
         
-        print("domains: {}".format(domains))
-
         variables = dict((x.name, x.parameterize()) for x in v)
         
-        print("variables: {}".format(variables))
-
         process = get_process(identifier)
         
-        print("process: {}".format(process))
-
-        params = {
-                'cwd': '/tmp',
-                'job_id': job.id,
-                'user_id': user.id,
-                }
-
-        logger.info('Job {} Building celery workflow'.format(job.id))
-
-        chain = tasks.print_hello.s("START!!")
-        
-        chain = (chain | tasks.check_auth.si(**params))
-        
-        chain = (chain | tasks.print_hello.si("HELLLO!!"))
-
-        chain = (chain | process.si(variables, operations, domains, **params))
-
-        logger.info('Job {} Executing celery workflow'.format(job.id))
-
-        chain()
-        
-    def execute_simple(self, user, job, identifier, data_inputs):
-        logger.info('Job {} Executing SIMPLE WPS process "{}"'.format(job.id, identifier))
-
-        v = parse_input.parse_input(data_inputs)
-
-        logger.info('Job {} Preparing process inputs'.format(job.id))
-        
-        print('v=')
-        
-        print(v)
-
-        variables = dict((x.name, x.value) for x in v)
-        
-        print('variables=')
-        
-        pprint(variables)
-        
-        process = get_process(identifier)
-        
-        print(process)
-
         params = {
                 'cwd': '/tmp',
                 'job_id': job.id,
@@ -318,15 +264,13 @@ class NodeManager(object):
         logger.info('Job {} Building celery workflow'.format(job.id))
 
         chain = tasks.check_auth.s(**params)
-
-        chain = (chain | process.si(variables,**params))
-
-        chain = (chain | tasks.handle_output.s(**params))
+        
+        chain = (chain | process.si(variables, operations, domains, **params))
 
         logger.info('Job {} Executing celery workflow'.format(job.id))
 
         chain()
-
+        
     def execute_cdas2(self, job, identifier, data_inputs):
         logger.info('Job {} Executing CDAS2 process "{}"'.format(job.id, identifier))
 
@@ -348,36 +292,6 @@ class NodeManager(object):
 
             request.send(str(request_cmd))
             
-    def execute_ophidia(self, user, job, identifier, data_inputs):
-        logger.info('Job {} Executing Ophidia process "{}"'.format(job.id, identifier))
-        
-        params = {
-                'cwd': '/tmp',
-                'job_id': job.id,
-                'user_id': user.id,
-                }
-        
-        ophclient = client.Client(settings.OPH_USER,settings.OPH_PASSWD,settings.OPH_HOSTNAME,settings.OPH_PORT)
-        
-        kwargs = ophidia_wps_parser.parse_inputs(data_inputs) # kwargs is a dictionary and includes operation[], variable[] and domain[] 
-        
-        workflow_names = ophidia_wps_parser.parse_workflow_names(kwargs) # list of names of workflow to call
-        
-        workflow_import_uri = ophidia_wps_parser.parse_uri(kwargs)
-        
-        file_name = uuid.uuid4()
-        
-        
-        for w in workflow_names:
-            print(w)            
-            params = ['tas', 'http://127.0.0.1:8080/thredds/dodsC/testOphidia/tas.nc' , settings.OPH_EXPORT_PATH , file_name]
-            lastResponse = ophclient.wsubmit(w , *params)
-        
-        
-        #string_submitted = ophidia_wps_parser.parse_workflow_parameters(domains,variables,operations)
-        
-
-
     def execute(self, user, identifier, data_inputs):
         """ WPS execute operation """
         try:
@@ -397,12 +311,8 @@ class NodeManager(object):
 
         if process.backend == 'local':
             self.execute_local(user, job, identifier, data_inputs)
-        elif process.backend == 'simple':
-            self.execute_simple(user, job, identifier, data_inputs)
         elif process.backend == 'CDAS2':
             self.execute_cdas2(job, identifier, data_inputs)
-        elif process.backend == 'ophidia':
-            self.execute_ophidia(user, job, identifier, data_inputs)
         else:
             job.failed()
 
@@ -431,8 +341,6 @@ class NodeManager(object):
 
             data_inputs = self.get_datainputs_from_request(complete_request)
             
-            #print("data_inputs handle get{}".format(data_inputs)) 
-
         return api_key, operation, identifier, data_inputs
 
     def handle_post(self, rquest, data, params):

@@ -1,0 +1,28 @@
+{
+        "name": "SUBSET",
+        "author": "Andrea",
+        "abstract": "workflow who implements a subset using oph_subset ",
+        "exec_mode": "sync",
+        "ncores": "1",
+        "tasks":
+        [
+                {
+                        "name": "ImportNC",
+                        "operator": "oph_importnc3",
+                        "arguments": [ "measure=$1"  , "src_path=$2" , "cwd=/" ]
+                },
+                {
+                        "name": "Subset",
+                        "operator": "oph_subset", 
+                        "arguments": [ "subset_dims=$5", "subset_filter=$6" , "subset_type=$7" ],
+                         "dependencies": [  { "task": "ImportNC", "type": "single" } ]
+                },
+                {
+                        "name": "ExportNC2",
+                        "operator": "oph_exportnc2",
+                        "arguments": [ "output_path=$3" , "cwd=/" , "output_name=$4"],
+                        "dependencies": [  { "task": "Subset", "type": "single" } ]
+                }
+                
+        ]
+}

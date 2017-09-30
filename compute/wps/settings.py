@@ -50,14 +50,13 @@ NAME = setting('WPS_NAME', 'Lawerence Livermore National Laboratory')
 SITE = setting('WPS_SITE', 'https://llnl.gov')
 
 # ophidia settings
-OPH_USER = setting('user' , 'oph-test')
-OPH_PASSWD = setting('passwd' , 'abcd')
-OPH_HOSTNAME = setting('hostname' , '127.0.0.1')
-OPH_PORT = setting('port','11732')
+OPH_USER = setting('OPH_USER' , 'oph-test')
+OPH_PASSWD = setting('OPH_PASSWD' , 'abcd')
+OPH_HOSTNAME = setting('OPH_HOSTNAME' , '127.0.0.1')
+OPH_PORT = setting('OPH_PORT','11732')
 
-this_dir = os.path.dirname(__file__)
-workflows_dir_relpath = os.path.join(this_dir, '../ophidia/workflows/')
-workflows_dir = os.path.normpath(workflows_dir_relpath)
-workflows_dir += '/'
-OPH_WORKFLOWS_PATH = setting('oph_workflows_path' , workflows_dir)
-OPH_EXPORT_PATH = setting('oph_export_path' , '/usr/local/ophidia/apache-tomcat-6.0.45/content/thredds/public/ophidia_test_data/')
+OPH_WORKFLOW_NAME = setting('OPH_WORKFLOW_NAME' , os.path.normpath(os.path.join(os.path.dirname(__file__), '../workflows/')) + '/{wname}.json' )
+OPH_EXPORT_PATH = setting('OPH_EXPORT_PATH' , '/usr/local/ophidia/apache-tomcat-6.0.45/content/thredds/public/ophidia_test_data/')
+
+# THREDDS SETTINGS
+THREDDS_DAP_URL = setting('THREDDS_DAP_URL', 'http://127.0.0.1:8080/thredds/dodsC/testOphidia/{file_name}.nc') 
