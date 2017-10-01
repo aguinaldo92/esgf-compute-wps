@@ -10,3 +10,4 @@ toolz
 MyProxyClient
 django-webpack-loader
 git+https://github.com/esgf/esgf-compute-api
+git+https://github.com/aguinaldo92/PyOphidia
